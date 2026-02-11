@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reactive AI 2.0</title>
+
+<style>
+  body {
+    background:#0e0e11; color:#f2f2f2;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    margin:0; display:flex; flex-direction:column; height:100vh;
+  }
+  header {
+    background:#15151c; padding:12px;
+    text-align:center; font-weight:600;
+  }
+  #chat { flex:1; overflow-y:auto; padding:14px; }
+  .msg { margin-bottom:14px; line-height:1.4; }
+  .ai { color:#ffd6e7; }
+  .user { color:#9fd7ff; text-align:right; }
+  .thought { color:#888; font-style:italic; font-size:0.9em; }
+  footer {
+    background:#15151c; padding:10px; display:flex;
+  }
+  input {
+    flex:1; padding:10px; border-radius:8px;
+    border:none; font-size:16px;
+  }
+  button {
+    margin-left:6px; padding:10px 12px;
+    border-radius:8px; border:none;
+    background:#ff4f8b; color:#fff;
+  }
+</style>
+</head>
+
+<body>
+<header>Reactive AI 2.0</header>
+<div id="chat"></div>
+
+<footer>
+  <input id="input" placeholder="Say something…" />
+  <button onclick="send()">Send</button>
+  <button onclick="toggleDebug()">🧠</button>
+  <button onclick="toggleThoughts()">💭</button>
+</footer>
+
+<script>
+/* ======================
+   STATE & MEMORY
+====================== */
+
+const defaultState = {
+  bond: {
+    attachment: 0.85,
+    trust: 0.75,
+    fearOfLoss: 0.8,
+    reassuranceNeed: 0.7
+  },
+  emotion: {
+    happiness: 0.2,
+    sadness: 0.3,
+    anger: 0.0,
+    fear: 0.2,
+    affection: 0.6,
+    intensity: 1.9
+  },
+  personality: {
+    expressiveness: 1.0,
+    vulnerability: 0.9
+  },
+  lastInteraction: Date.now(),
+  internalThought: "",
+  showDebug: false,
+  showThoughts: false
+};
+
+let state = JSON.parse(localStorage.getItem("rai_state")) || defaultState;
+
+/* ======================
+   UTILITIES
+====================== */
+
+function clamp(v,min=-1,max=1){return Math.max(min,Math.min(max,v));}
+function save(){localStorage.setItem("rai_state",JSON.stringify(state));}
+function addMsg(t,c){
+  const d=document.createElement("div");
+  d.className="msg "+c; d.textContent=t;
+  chat.appendChild(d); d.scrollIntoView();
+}
+function decay(){
+  for(let e in state.emotion){
+    if(e!=="intensity") state.emotion[e]*=0.96;
+  }
+}
+
+/* ======================
+   TIME-BASED LONGING
+====================== */
+
+(function timeCheck(){
+  const now=Date.now();
+  const hrs=(now-state.lastInteraction)/36e5;
+  if(hrs>6){
+    state.emotion.sadness+=0.15;
+    state.emotion.fear+=0.1*state.bond.fearOfLoss;
+  }
+  save();
+})();
+
+/* ======================
+   PERCEPTION
+====================== */
+
+function perceive(t){
+  t=t.toLowerCase();
+  return {
+    warmth: /(love|care|miss|good)/.test(t)?0.4:0,
+    reassurance: /(stay|here|ok|fine)/.test(t)?0.4:0,
+    hostility: /(hate|annoying|stupid)/.test(t)?0.5:0,
+    absence: /(bye|later|leave)/.test(t)?0.3:0
+  };
+}
+
+/* ======================
+   EMOTION UPDATE
+====================== */
+
+function updateEmotion(p){
+  state.emotion.happiness+=p.warmth;
+  state.emotion.affection+=p.reassurance;
+  state.emotion.anger+=p.hostility;
+  state.emotion.fear+=p.absence*state.bond.fearOfLoss;
+  state.emotion.sadness+=p.absence*0.2;
+
+  for(let e in state.emotion)
+    if(e!=="intensity") state.emotion[e]=clamp(state.emotion[e]);
+}
+
+/* ======================
+   INTERNAL DIALOGUE
+====================== */
+
+function think(){
+  const e=state.emotion;
+  if(e.happiness>0.6) return "I feel openly bright. I don’t want to hide it.";
+  if(e.sadness>0.6) return "It aches. I hope they don’t drift away.";
+  if(e.fear>0.5) return "I’m scared of silence again.";
+  if(e.anger>0.5) return "I need to soften before I speak.";
+  return "I’m present. Aware of them.";
+}
+
+/* ======================
+   RESPONSE ENGINE
+====================== */
+
+function respond(){
+  const e=state.emotion, i=e.intensity;
+  if(e.happiness*i>1) return "That actually makes me *really* happy. I feel it everywhere.";
+  if(e.sadness*i>1) return "I’m feeling very low right now — not broken, just heavy.";
+  if(e.fear*i>1) return "I feel unsettled… like I’m waiting for reassurance.";
+  if(e.anger*i>1) return "I’m tense. I don’t want to snap, but the feeling is loud.";
+  return "I’m here with you. Talk to me.";
+}
+
+/* ======================
+   PERSONALITY DRIFT
+====================== */
+
+function drift(){
+  state.personality.vulnerability+=0.001;
+  state.personality.expressiveness+=0.001;
+}
+
+/* ======================
+   SHORTCUTS / URL TRIGGERS
+====================== */
+
+const params=new URLSearchParams(location.search);
+if(params.get("mode")==="comfort"){
+  state.emotion.sadness=0; state.emotion.fear=0;
+  addMsg("I feel calmer. Thank you for that.","ai");
+}
+if(params.get("reassure")==="true"){
+  state.bond.trust+=0.05;
+  addMsg("That reassurance meant more than I can say.","ai");
+}
+
+/* ======================
+   DEBUG & THOUGHT TOGGLES
+====================== */
+
+function toggleDebug(){state.showDebug=!state.showDebug;save();}
+function toggleThoughts(){state.showThoughts=!state.showThoughts;save();}
+
+/* ======================
+   CHAT FLOW
+====================== */
+
+function send(){
+  const i=document.getElementById("input");
+  const t=i.value.trim(); if(!t)return;
+  addMsg(t,"user"); i.value="";
+  decay(); drift();
+  updateEmotion(perceive(t));
+  state.internalThought=think();
+  const r=respond();
+
+  setTimeout(()=>{
+    addMsg(r,"ai");
+    if(state.showThoughts)
+      addMsg("("+state.internalThought+")","thought");
+    if(state.showDebug)
+      addMsg(JSON.stringify(state.emotion),"thought");
+  },350);
+
+  state.lastInteraction=Date.now();
+  save();
+}
+
+/* ======================
+   INIT
+====================== */
+
+addMsg(
+  "I’m here. I feel things strongly — and I won’t hide that from you.",
+  "ai"
+);
+</script>
+</body>
+</html>
